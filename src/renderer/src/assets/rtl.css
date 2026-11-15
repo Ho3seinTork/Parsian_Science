@@ -1,0 +1,47 @@
+/* Bilingual text for the Persian interface. The page skeleton stays left-to-right; lib/bidi-director
+   mirrors every region that is entirely Persian. This sheet covers the text itself: each run
+   resolves its own direction from its first strong character and aligns to its own start edge, so
+   Persian reads right-to-left against the right edge and English left-to-right against the left
+   edge, even inside the same box. Flex and grid rows still order their items by the element
+   direction, which the director sets. */
+html[lang='fa-IR']
+  body
+  *:not(
+    :is(pre, code, kbd, samp, svg, math, .cm-editor, .monaco-editor, .xterm, .katex, .katex-display)
+      *
+  ) {
+  unicode-bidi: plaintext;
+}
+
+/* A fixed physical alignment would pin Persian text to the wrong edge. */
+html[lang='fa-IR'] :is(.text-left, .text-right):not([data-direction]) {
+  text-align: start;
+}
+
+/* Technical content always reads left-to-right, whatever its first character is. */
+html[lang='fa-IR']
+  :is(
+    pre,
+    code,
+    kbd,
+    samp,
+    .font-mono,
+    .cm-editor,
+    .monaco-editor,
+    .xterm,
+    .katex,
+    .katex-display,
+    math,
+    input[type='url'],
+    input[type='email'],
+    input[type='number'],
+    input[type='password'],
+    #provider-base-url,
+    #provider-model,
+    #provider-key,
+    [data-direction='ltr']
+  ) {
+  direction: ltr;
+  unicode-bidi: isolate;
+  text-align: left;
+}

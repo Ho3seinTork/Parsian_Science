@@ -1,0 +1,80 @@
+name: Notarize macOS (dry-run)
+
+# Manual, no-publish macOS notarization check.
+#
+# Builds + SIGNS the current ref's mac app (mac only, verify suite skipped for speed), submits it to
+# Apple's notary service, staples the ticket, and re-emits the stapled dmg/zip as run artifacts you
+# can download from the run. It touches NO GitHub Release (notarize-mac.yml's workflow_dispatch
+# entry is a retired backfill path that only fails fast). Use this to confirm the current build
+# passes notarization before cutting a real release.
+#
+# It reuses the exact release-path jobs (build.yml -> notarize-mac.yml's workflow_call entry) minus
+# the publish step, so a green run means `stapler validate` passed (notarization actually succeeded).
+# source_run skips the build and reuses a same-repository Release push on main history. The
+# staple mode downloads existing Apple tickets without submitting again; smoke mode exercises
+# already stapled packages only. Both keep Gatekeeper and real launches. Output is confined to
+# this dry run's artifacts. New notarization requires Apple credentials and fails if absent.
+on:
+  workflow_dispatch:
+    inputs:
+      source_run:
+        description: 'Existing Release run ID (empty builds this ref). Source artifacts stay unchanged.'
+        type: string
+        default: ''
+      architecture:
+        description: 'Native architecture to diagnose'
+        type: choice
+        default: arm64
+        options: [arm64, x64, all]
+      operation:
+        description: 'Existing tickets: staple; already stapled packages: smoke; new build: notarize'
+        type: choice
+        default: notarize
+        options: [notarize, staple, smoke]
+
+# Default to read-only repository access. Only the Build call grants its required OIDC
+# permission; this macOS-only run never invokes Azure signing or writes to a Release.
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require source artifacts for diagnostic modes
+        env:
+          SOURCE_RUN: ${{ inputs.source_run }}
+          OPERATION: ${{ inputs.operation }}
+        run: |
+          if [ "$OPERATION" != "notarize" ] && [ -z "$SOURCE_RUN" ]; then
+            echo "staple/smoke requires source_run" >&2; exit 1
+          fi
+  # Signed mac-only build (no verify, no publish). Uploads macos-arm64 / macos-x64 run artifacts.
+  build:
+    needs: validate
+    if: inputs.source_run == '' && inputs.operation == 'notarize'
+    uses: ./.github/workflows/build.yml
+    # Reusable Build declares OIDC for conditional Windows signing; callers must allow it
+    # even when this run selects an unsigned or macOS-only build. Keep this job-scoped.
+    permissions:
+      contents: read
+      id-token: write
+    with:
+      mac_only: true
+      skip_verify: true
+    secrets: inherit
+
+  # Notarize + staple those artifacts and re-emit the stapled versions as run artifacts; nothing is
+  # published here. Deliberately no publish job follows.
+  notarize:
+    needs: [validate, build]
+    if: ${{ !cancelled() && needs.validate.result == 'success' && (needs.build.result == 'success' || (needs.build.result == 'skipped' && inputs.source_run != '')) }}
+    uses: ./.github/workflows/notarize-mac.yml
+    with:
+      certified_build: false
+      source_run: ${{ inputs.source_run }}
+      architecture: ${{ inputs.architecture }}
+      operation: ${{ inputs.operation }}
+    secrets: inherit

@@ -1,0 +1,4 @@
+provider: generic
+url: https://github.com/Ho3seinTork/Persian-Science/releases/latest/download
+channel: latest
+updaterCacheDirName: persian-science-updater
